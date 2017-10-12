@@ -297,7 +297,7 @@ class ZipTricks::Streamer
                                     uncompressed_size: 0)
 
     w = DeflatedWriter.new(@out)
-    writer = AsyncWriter.new(w)
+    writer = AsyncWritable.new(w)
 
     writer.on_done do
       crc, comp, uncomp = w.finish
