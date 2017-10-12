@@ -17,7 +17,7 @@ class ZipTricks::Streamer::AsyncWritable < ZipTricks::Streamer::Writable
 
   # Execute all on_done callbacks.
   #
-  def on_done
+  def done
     @done.each &:call
   end
 end
