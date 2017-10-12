@@ -216,6 +216,43 @@ class ZipTricks::Streamer
                                   uncompressed_size: uncomp)
   end
 
+  # Opens the stream for a stored file in the archive, and yields an asynchronous writer
+  # for that file to the block.
+  # Once the writer completes, a data descriptor will be written with the
+  # actual compressed/uncompressed sizes and the CRC32 checksum.
+  #
+  # @param filename[String] the name of the file in the archive
+  # @yield [#<<, #write, #on_done, #done] an object that the file contents must be written to and a callback for when writting is done.
+  def async_write_stored_file(filename)
+    add_file_and_write_local_header(filename: filename,
+                                    storage_mode: STORED,
+                                    use_data_descriptor: true,
+                                    crc32: 0,
+                                    compressed_size: 0,
+                                    uncompressed_size: 0)
+
+    w = StoredWriter.new(@out)
+    writer = AsyncWritable.new(w)
+
+    writer.on_done do
+      crc, comp, uncomp = w.finish
+
+      # Save the information into the entry for when the time comes to write
+      # out the central directory
+      last_entry = @files.last
+      last_entry.crc32 = crc
+      last_entry.compressed_size = comp
+      last_entry.uncompressed_size = uncomp
+
+      @writer.write_data_descriptor(io: @out,
+                                    crc32: crc,
+                                    compressed_size: comp,
+                                  uncompressed_size: uncomp)
+    end
+
+    yield(writer)
+  end
+
   # Opens the stream for a deflated file in the archive, and yields a writer
   # for that file to the block. Once the write completes, a data descriptor
   # will be written with the actual compressed/uncompressed sizes and the
@@ -242,6 +279,39 @@ class ZipTricks::Streamer
     last_entry.compressed_size = comp
     last_entry.uncompressed_size = uncomp
     write_data_descriptor_for_last_entry
+  end
+
+  # Opens the stream for a deflated file in the archive, and yields an asyncnronous writer
+  # for that file to the block. Once the write completes, a data descriptor
+  # will be written with the actual compressed/uncompressed sizes and the
+  # CRC32 checksum.
+  #
+  # @param filename[String] the name of the file in the archive
+  # @yield [#<<, #write, #on_done, #done] an object that the file contents must be written to and a callback for when writting is done.
+  def async_write_deflated_file(filename)
+    add_file_and_write_local_header(filename: filename,
+                                    storage_mode: DEFLATED,
+                                    use_data_descriptor: true,
+                                    crc32: 0,
+                                    compressed_size: 0,
+                                    uncompressed_size: 0)
+
+    w = DeflatedWriter.new(@out)
+    writer = AsyncWriter.new(w)
+
+    writer.on_done do
+      crc, comp, uncomp = w.finish
+
+      # Save the information into the entry for when the time comes to write
+      # out the central directory
+      last_entry = @files[-1]
+      last_entry.crc32 = crc
+      last_entry.compressed_size = comp
+      last_entry.uncompressed_size = uncomp
+      write_data_descriptor_for_last_entry
+    end
+    
+    yield(writer)
   end
 
   # Closes the archive. Writes the central directory, and switches the writer into
